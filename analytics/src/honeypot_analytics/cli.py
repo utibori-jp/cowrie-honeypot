@@ -11,7 +11,12 @@ from .db import connect
 from .normalize import NoDataForDay, normalize_range
 
 
-def _parse_date(value: str) -> dt.date:
+def _parse_date(value: str):
+    # An empty string means "not given". Argo has no way to omit a parameter,
+    # so the workflow passes "" on a scheduled run and a real date on a
+    # backfill.
+    if not value:
+        return None
     try:
         return dt.date.fromisoformat(value)
     except ValueError:

@@ -45,6 +45,7 @@ line rather than a sample.
 ```
 honeypot-analytics normalize                      yesterday
 honeypot-analytics normalize --date 2026-09-15    one day
+honeypot-analytics normalize --date ""              also yesterday, for argo
 honeypot-analytics normalize --from 2026-09-13 --to 2026-09-15
 ```
 

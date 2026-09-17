@@ -135,3 +135,12 @@ def test_keeps_fields_that_only_appear_past_the_inference_sample(env):
         ).fetchall()
     }
     assert "url" in cols
+
+
+def test_empty_date_argument_means_yesterday():
+    from honeypot_analytics import cli
+
+    args = cli.build_parser().parse_args(["normalize", "--date", ""])
+    assert args.date is None
+    start, end = cli._resolve_range(args)
+    assert start == end == cli._yesterday()
