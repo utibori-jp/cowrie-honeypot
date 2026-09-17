@@ -1,0 +1,11 @@
+# Only the settings that differ from cowrie's shipped etc/cowrie.cfg.dist.
+# Copy the dist file to etc/cowrie.cfg and apply these on top.
+
+[ssh]
+# Port 22 needs authbind, since cowrie refuses to run as root. The scanning
+# traffic this whole project depends on goes to 22 and almost never to 2222.
+listen_endpoints = tcp:22:interface=0.0.0.0
+
+[output_jsonlog]
+enabled = true
+logfile = ${honeypot:log_path}/cowrie.json
