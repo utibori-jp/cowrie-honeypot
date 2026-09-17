@@ -6,3 +6,6 @@ __pycache__/
 # Filled in on the server, never committed.
 vps/rclone/rclone.conf
 vps/cowrie/cowrie.cfg
+
+# Personal working memo, loaded by Claude Code, not for the repo.
+CLAUDE.local.md
