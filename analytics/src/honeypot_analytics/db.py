@@ -91,16 +91,32 @@ def silver_events_source() -> str:
     )
 
 
-def connect(read_only: bool = False) -> duckdb.DuckDBPyConnection:
-    """Open the working database with httpfs loaded and B2 configured.
+def workbench_db() -> Path:
+    """The database file the notebooks work against.
+
+    DuckDB allows one writer per file. Jobs deliberately do not open it: they
+    read parquet and write parquet, and taking the write lock would mean a
+    notebook left open overnight stops the pipeline.
+    """
+    return data_dir() / "duckdb" / "honeypot.duckdb"
+
+
+def connect(
+    database: str | Path | None = None, read_only: bool = False
+) -> duckdb.DuckDBPyConnection:
+    """Open a connection with httpfs loaded and B2 configured.
+
+    Defaults to in-memory, which is what a job wants. Pass workbench_db() for
+    a session that should keep its views and tables around.
 
     The B2 secret is only created when credentials are in the environment, so
     a connection that only touches local parquet works without them.
     """
-    db_path = data_dir() / "duckdb" / "honeypot.duckdb"
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-
-    con = duckdb.connect(str(db_path), read_only=read_only)
+    if database is None:
+        con = duckdb.connect()
+    else:
+        Path(database).parent.mkdir(parents=True, exist_ok=True)
+        con = duckdb.connect(str(database), read_only=read_only)
 
     # Keep extensions on the volume so a fresh pod does not refetch them.
     ext_dir = data_dir() / "duckdb" / "extensions"
@@ -125,3 +141,17 @@ def connect(read_only: bool = False) -> duckdb.DuckDBPyConnection:
         )
 
     return con
+
+
+def init_views(con: duckdb.DuckDBPyConnection) -> list[str]:
+    """Create the views the notebooks query by name.
+
+    A SQL client connecting straight to the file sees only what the file
+    holds, so the read options that silver_events_source() pins have to be
+    baked into a stored view rather than applied per query.
+    """
+    con.execute(
+        "CREATE OR REPLACE VIEW silver_events AS SELECT * FROM "
+        + silver_events_source()
+    )
+    return ["silver_events"]

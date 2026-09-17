@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "honeypot-analytics"
-version = "0.1.1"
+version = "0.2.0"
 description = "Analysis of Cowrie honeypot logs"
 requires-python = ">=3.11"
 dependencies = [
@@ -20,6 +20,10 @@ dependencies = [
 notebook = [
     "jupyterlab==4.6.3",
     "matplotlib==3.10.7",
+    # %%sql cells against the workbench database, so exploring is SQL rather
+    # than SQL wrapped in python strings.
+    "jupysql==0.11.1",
+    "duckdb-engine==0.17.0",
 ]
 dev = [
     "pytest==9.0.1",

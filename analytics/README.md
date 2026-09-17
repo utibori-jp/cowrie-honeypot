@@ -21,18 +21,22 @@ documented at https://docs.cowrie.org/en/latest/OUTPUT.html. Two things are
 not Cowrie's: `source_file`, the B2 object a row came from, and `year`,
 `month`, `day`, which come from the directory names rather than the files.
 
-Read it back through `db.silver_events_source()` rather than calling
-`read_parquet` by hand. It pins `union_by_name`, without which the read breaks
-once two days disagree on columns, and it pins the partition columns to
-VARCHAR, which DuckDB otherwise guesses per column and gets inconsistent.
+From a notebook it is a view called `silver_events`, created by `init-views`
+and stored in the workbench database:
 
-```python
-import duckdb
-from honeypot_analytics import db
-
-con = duckdb.connect()
-con.sql(f"SELECT eventid, count(*) FROM {db.silver_events_source()} GROUP BY 1")
+```sql
+%%sql
+SELECT eventid, count(*) FROM silver_events GROUP BY 1 ORDER BY 2 DESC
 ```
+
+From code that has its own connection, `db.silver_events_source()` is the same
+thing as a SQL expression. Either way, do not hand write `read_parquet`: both
+pin `union_by_name`, without which the read breaks once two days disagree on
+columns, and pin the partition columns to VARCHAR, which DuckDB otherwise
+guesses per column and gets inconsistent.
+
+One process at a time can hold the workbench database open for writing, so
+jobs connect in memory instead. Nothing a job does needs the file.
 
 Field sets differ sharply by event type. A day of scanning is almost entirely
 session and login events, while the interesting ones (`file_download`,
@@ -43,6 +47,7 @@ line rather than a sample.
 ## Running it
 
 ```
+honeypot-analytics init-views                     (re)create the notebook views
 honeypot-analytics normalize                      yesterday
 honeypot-analytics normalize --date 2026-09-15    one day
 honeypot-analytics normalize --date ""              also yesterday, for argo

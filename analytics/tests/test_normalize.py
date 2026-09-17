@@ -144,3 +144,26 @@ def test_empty_date_argument_means_yesterday():
     assert args.date is None
     start, end = cli._resolve_range(args)
     assert start == end == cli._yesterday()
+
+
+def test_jobs_get_an_in_memory_connection_by_default(env):
+    # A job holding the workbench file open would lock out the notebooks, and
+    # a notebook holding it open would lock out the nightly job.
+    con = db.connect()
+    assert con.execute("SELECT current_database()").fetchone()[0] == "memory"
+    assert not db.workbench_db().exists()
+
+
+def test_init_views_creates_a_queryable_view(env):
+    write_bronze(env / "bronze", DAY, [{"eventid": "cowrie.session.connect"}])
+    con = db.connect()
+    normalize.normalize_day(con, DAY)
+    con.close()
+
+    # A fresh connection to the file, the way a SQL client would arrive.
+    work = db.connect(db.workbench_db())
+    db.init_views(work)
+    work.close()
+
+    reader = db.connect(db.workbench_db(), read_only=True)
+    assert reader.execute("SELECT count(*) FROM silver_events").fetchone()[0] == 1

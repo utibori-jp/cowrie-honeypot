@@ -7,6 +7,7 @@ import datetime as dt
 import logging
 import sys
 
+from . import db
 from .db import connect
 from .normalize import NoDataForDay, normalize_range
 
@@ -52,6 +53,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="skip days with nothing in B2 instead of failing",
     )
+
+    sub.add_parser(
+        "init-views",
+        help="create the notebook views in the workbench database",
+    )
     return parser
 
 
@@ -76,6 +82,15 @@ def main(argv: list[str] | None = None) -> int:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
     )
+
+    if args.command == "init-views":
+        con = db.connect(db.workbench_db())
+        try:
+            names = db.init_views(con)
+        finally:
+            con.close()
+        print("created " + ", ".join(names) + " in " + str(db.workbench_db()))
+        return 0
 
     if args.command == "normalize":
         start, end = _resolve_range(args)
