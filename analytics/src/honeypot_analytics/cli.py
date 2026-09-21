@@ -7,7 +7,7 @@ import datetime as dt
 import logging
 import sys
 
-from . import db
+from . import db, publish
 from .db import connect
 from .normalize import NoDataForDay, normalize_range
 
@@ -27,9 +27,9 @@ def _parse_date(value: str):
 
 
 def _yesterday() -> dt.date:
-    # UTC, matching the droplet's log rotation. Which timezone the project
-    # should settle on is still open; the log file names carry a date and no
-    # time, so this only decides which day a bare run picks.
+    # UTC, which is what the droplet rotates on despite sitting in Singapore,
+    # so a day's partition holds exactly that UTC day. Storage and aggregation
+    # stay in UTC everywhere and only the display converts.
     return dt.datetime.now(dt.timezone.utc).date() - dt.timedelta(days=1)
 
 
@@ -54,9 +54,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="skip days with nothing in B2 instead of failing",
     )
 
+    pub = sub.add_parser(
+        "publish",
+        help="load a day of silver into postgres for grafana",
+    )
+    pub.add_argument(
+        "--date", type=_parse_date, help="single day (default: yesterday, UTC)"
+    )
+    pub.add_argument("--from", dest="start", type=_parse_date)
+    pub.add_argument("--to", dest="end", type=_parse_date)
+
     sub.add_parser(
         "init-views",
         help="create the notebook views in the workbench database",
+    )
+    sub.add_parser(
+        "init-db",
+        help="create the postgres tables publish writes to",
     )
     return parser
 
@@ -90,6 +104,27 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             con.close()
         print("created " + ", ".join(names) + " in " + str(db.workbench_db()))
+        return 0
+
+    if args.command == "init-db":
+        con = connect()
+        try:
+            publish.create_schema(con)
+        finally:
+            con.close()
+        print("created the publish tables")
+        return 0
+
+    if args.command == "publish":
+        start, end = _resolve_range(args)
+        con = connect()
+        try:
+            results = publish.publish_range(con, start, end)
+        finally:
+            con.close()
+
+        for day, counts in results.items():
+            print(f"{day}: " + ", ".join(f"{k} {v}" for k, v in counts.items()))
         return 0
 
     if args.command == "normalize":

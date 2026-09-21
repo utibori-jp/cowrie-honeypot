@@ -32,15 +32,6 @@ def write_bronze(prefix, day, records):
     return path
 
 
-@pytest.fixture
-def env(tmp_path, monkeypatch):
-    monkeypatch.setenv("HONEYPOT_B2_PREFIX", str(tmp_path / "bronze"))
-    monkeypatch.setenv("HONEYPOT_DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
-    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
-    return tmp_path
-
-
 def test_writes_one_partition(env):
     write_bronze(
         env / "bronze",

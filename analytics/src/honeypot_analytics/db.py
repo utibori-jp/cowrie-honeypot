@@ -91,6 +91,18 @@ def silver_events_source() -> str:
     )
 
 
+def postgres_dsn() -> str:
+    """Where the published session grain lives, for Grafana to read.
+
+    A whole connection string in HONEYPOT_PG_DSN if there is one, which is
+    convenient against a throwaway database. Otherwise empty, which hands the
+    question to libpq and its PGHOST, PGUSER, PGPASSWORD and PGDATABASE. The
+    cluster uses those, so only the password has to come from a secret and the
+    rest stays readable in the chart.
+    """
+    return os.environ.get("HONEYPOT_PG_DSN", "")
+
+
 def workbench_db() -> Path:
     """The database file the notebooks work against.
 
