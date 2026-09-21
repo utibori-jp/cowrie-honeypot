@@ -15,6 +15,18 @@ gold     features, clusters, survival curves
 Bronze stays in B2 and is never copied down whole. Silver exists so that
 exploring does not mean re-reading B2 on every query.
 
+Beside those sits a Postgres that Grafana reads, filled by `publish` from
+silver. It holds three tables at session grain: `sessions`, `login_attempts`
+and `commands`. Nothing originates there. Losing it costs a re-run of
+`publish` over the days on the volume, which is why it runs on one replica
+with no backup.
+
+Grafana gets SQL rather than a pile of pre-computed aggregates because the
+dashboard is for looking around, and aggregates only answer the questions
+somebody thought of while writing them. Prometheus would not do: source IPs,
+usernames, passwords and command strings each run to thousands of distinct
+values, and a time series per label combination is not what any of that is.
+
 The normalize job that produces `silver/events` makes no modelling decisions.
 It writes whatever columns Cowrie emitted that day, so the schema is Cowrie's,
 documented at https://docs.cowrie.org/en/latest/OUTPUT.html. Two things are
@@ -48,14 +60,22 @@ line rather than a sample.
 
 ```
 honeypot-analytics init-views                     (re)create the notebook views
+honeypot-analytics init-db                        (re)create the postgres tables
 honeypot-analytics normalize                      yesterday
 honeypot-analytics normalize --date 2026-09-15    one day
 honeypot-analytics normalize --date ""              also yesterday, for argo
 honeypot-analytics normalize --from 2026-09-13 --to 2026-09-15
+honeypot-analytics publish                        yesterday, silver to postgres
+honeypot-analytics publish --from 2026-09-13 --to 2026-09-20
 ```
 
-Each run replaces one day's partition, so re-running is safe and backfilling
-is a loop over dates.
+Each run replaces one day, so re-running is safe and backfilling is a loop over
+dates. `publish` takes the same date arguments as `normalize` and replaces the
+day in all three tables inside one transaction.
+
+A day with no silver partition stops `publish` rather than emptying that day in
+Postgres, since the delete would land and the insert would bring nothing.
+`--allow-missing` turns that into a skip, leaving whatever is already stored.
 
 ## Environment
 
@@ -66,10 +86,17 @@ HONEYPOT_B2_PREFIX       s3://cowrie-log/cowrie/honeypod1
 HONEYPOT_B2_ENDPOINT     s3.us-west-004.backblazeb2.com
 HONEYPOT_B2_REGION       us-west-004
 HONEYPOT_DATA_DIR        where silver and gold are written
+PGHOST PGPORT PGUSER PGDATABASE PGPASSWORD    where publish writes
+HONEYPOT_PG_DSN          a whole connection string, instead of the above
 ```
 
 On the cluster the two credentials come from the `b2-credentials` sealed
 secret and the rest from the chart's values.
+
+The Postgres connection is spelled out as libpq variables so that only
+`PGPASSWORD` has to come from a secret and the rest stays readable in the
+chart. `HONEYPOT_PG_DSN` exists for pointing at a throwaway database while
+developing, and wins when it is set.
 
 ## Development
 
@@ -79,4 +106,15 @@ pytest
 ```
 
 The tests build small gzipped JSON files locally and run the real normalize
-path over them, so they cover the DuckDB SQL without touching B2.
+path over them, so they cover the DuckDB SQL without touching B2. The same
+fixtures feed `publish`, whose transform is a SELECT against silver and needs
+no database to check.
+
+The handful of tests that do write to Postgres skip unless `HONEYPOT_PG_DSN`
+points somewhere throwaway:
+
+```
+docker run -d --rm --name pg -e POSTGRES_PASSWORD=devonly \
+  -e POSTGRES_DB=honeypot -p 55432:5432 postgres:18-alpine
+HONEYPOT_PG_DSN=postgresql://postgres:devonly@localhost:55432/honeypot pytest
+```
