@@ -67,6 +67,7 @@ honeypot-analytics normalize --date ""              also yesterday, for argo
 honeypot-analytics normalize --from 2026-09-13 --to 2026-09-15
 honeypot-analytics publish                        yesterday, silver to postgres
 honeypot-analytics publish --from 2026-09-13 --to 2026-09-20
+honeypot-analytics report                         yesterday, postgres to discord
 ```
 
 Each run replaces one day, so re-running is safe and backfilling is a loop over
@@ -76,6 +77,13 @@ day in all three tables inside one transaction.
 A day with no silver partition stops `publish` rather than emptying that day in
 Postgres, since the delete would land and the insert would bring nothing.
 `--allow-missing` turns that into a skip, leaving whatever is already stored.
+
+`report` reads Postgres rather than silver, so the numbers it posts and the
+numbers on the dashboard cannot disagree.
+
+Losing the Postgres volume costs `init-db` and then `publish` over the days on
+the data volume. Neither happens on its own, so a rebuilt database stays empty
+until someone runs them.
 
 ## Environment
 
@@ -88,6 +96,7 @@ HONEYPOT_B2_REGION       us-west-004
 HONEYPOT_DATA_DIR        where silver and gold are written
 PGHOST PGPORT PGUSER PGDATABASE PGPASSWORD    where publish writes
 HONEYPOT_PG_DSN          a whole connection string, instead of the above
+DISCORD_WEBHOOK_URL      where report posts
 ```
 
 On the cluster the two credentials come from the `b2-credentials` sealed

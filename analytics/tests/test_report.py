@@ -163,3 +163,14 @@ def test_report_takes_the_same_date_arguments_as_the_other_steps():
 
     args = cli.build_parser().parse_args(["report", "--date", ""])
     assert cli._resolve_range(args) == (cli._yesterday(), cli._yesterday())
+
+
+def test_a_missing_username_or_password_reads_as_absent():
+    # Cowrie emits login events without a password field, and "None" in the
+    # report looks like a bug rather than a fact about the attempt.
+    summary = dict(SUMMARY, top_credentials=[("admin", None, 14), (None, "x", 3)])
+
+    text = report.format_report(DAY, summary)
+
+    assert "None" not in text
+    assert "admin / -" in text

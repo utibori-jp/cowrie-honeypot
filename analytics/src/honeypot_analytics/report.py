@@ -51,7 +51,10 @@ def format_report(day: dt.date, summary: dict) -> str:
         lines.append("")
         lines.append("most tried logins")
         for user, password, count in summary["top_credentials"]:
-            lines.append(f"  {count:>6}  {user} / {password}")
+            # Cowrie logs login events that carry no password field at all.
+            who = _shorten(user, 32) if user is not None else "-"
+            secret = _shorten(password, 32) if password is not None else "-"
+            lines.append(f"  {count:>6}  {who} / {secret}")
 
     if summary["top_commands"]:
         lines.append("")
