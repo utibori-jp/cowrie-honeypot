@@ -16,14 +16,6 @@ from honeypot_analytics import db, normalize, publish
 
 DAY = dt.date(2026, 9, 15)
 
-# The round trip needs a real postgres. Everything above it does not, so the
-# suite still says something useful where one is not running.
-needs_pg = pytest.mark.skipif(
-    not os.environ.get("HONEYPOT_PG_DSN"),
-    reason="set HONEYPOT_PG_DSN to a throwaway postgres to run this",
-)
-
-
 def event(eventid, session="s1", ts="2026-09-15 01:02:03.000000", **extra):
     return {
         "eventid": eventid,
@@ -173,7 +165,7 @@ def test_session_row_carries_the_derived_fields(env, write_bronze):
     ]
 
 
-@needs_pg
+@pytest.mark.needs_pg
 def test_publish_day_loads_the_three_tables(env, write_bronze):
     con = silver(
         env,
@@ -197,7 +189,7 @@ def test_publish_day_loads_the_three_tables(env, write_bronze):
     ).fetchall() == [("s1", 1)]
 
 
-@needs_pg
+@pytest.mark.needs_pg
 def test_publishing_a_day_twice_replaces_rather_than_duplicates(env, write_bronze):
     con = silver(
         env,
@@ -231,7 +223,7 @@ def test_publish_takes_the_same_date_arguments_as_normalize():
     assert cli._resolve_range(empty) == (cli._yesterday(), cli._yesterday())
 
 
-@needs_pg
+@pytest.mark.needs_pg
 def test_libpq_environment_variables_work_without_a_dsn(env, write_bronze, monkeypatch):
     # What the cluster uses: host, user and database sit in the chart as plain
     # values and only the password comes from a secret.
@@ -261,7 +253,7 @@ def test_publishing_a_day_with_no_silver_is_an_error(env, write_bronze):
         publish.publish_day(con, DAY)
 
 
-@needs_pg
+@pytest.mark.needs_pg
 def test_allow_missing_leaves_what_is_already_there(env, write_bronze):
     con = silver(env, write_bronze, [event("cowrie.session.connect")])
     publish.create_schema(con)

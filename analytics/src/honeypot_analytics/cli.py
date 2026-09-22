@@ -7,7 +7,7 @@ import datetime as dt
 import logging
 import sys
 
-from . import db, publish
+from . import db, publish, report
 from .db import connect
 from .normalize import NoDataForDay, normalize_range
 
@@ -63,6 +63,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     pub.add_argument("--from", dest="start", type=_parse_date)
     pub.add_argument("--to", dest="end", type=_parse_date)
+
+    rep = sub.add_parser(
+        "report",
+        help="post a day's summary to the discord webhook",
+    )
+    rep.add_argument(
+        "--date", type=_parse_date, help="single day (default: yesterday, UTC)"
+    )
+    rep.add_argument("--from", dest="start", type=_parse_date)
+    rep.add_argument("--to", dest="end", type=_parse_date)
 
     sub.add_parser(
         "init-views",
@@ -125,6 +135,20 @@ def main(argv: list[str] | None = None) -> int:
 
         for day, counts in results.items():
             print(f"{day}: " + ", ".join(f"{k} {v}" for k, v in counts.items()))
+        return 0
+
+    if args.command == "report":
+        start, end = _resolve_range(args)
+        webhook = report.webhook_url()
+        con = connect()
+        try:
+            day = start
+            while day <= end:
+                report.send_daily_report(con, day, webhook)
+                print(f"{day}: reported")
+                day += dt.timedelta(days=1)
+        finally:
+            con.close()
         return 0
 
     if args.command == "normalize":

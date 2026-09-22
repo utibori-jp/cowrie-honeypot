@@ -11,11 +11,34 @@ from __future__ import annotations
 
 import gzip
 import json
+import os
 import shutil
 
 import pytest
 
 import duckdb
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "needs_pg: writes to postgres, so it needs one to write to"
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip the postgres tests where there is no postgres.
+
+    Everything else covers the transform on its own, so the suite still says
+    something useful without a database. CI runs in exactly that state.
+    """
+    if os.environ.get("HONEYPOT_PG_DSN"):
+        return
+    skip = pytest.mark.skip(
+        reason="set HONEYPOT_PG_DSN to a throwaway postgres to run this"
+    )
+    for item in items:
+        if "needs_pg" in item.keywords:
+            item.add_marker(skip)
 
 
 def _write_bronze(prefix, day, records):
@@ -54,6 +77,33 @@ def extension_cache(tmp_path_factory):
         con.install_extension(name)
     con.close()
     return cache
+
+
+@pytest.fixture(autouse=True)
+def clean_postgres(request, extension_cache):
+    """Empty the published tables before a test that writes to them.
+
+    The tests share one database, and session is the primary key, so a session
+    id reused by another test collides no matter which day it belongs to.
+    Absolute row counts only mean something on an empty table anyway.
+    """
+    if "needs_pg" not in request.keywords:
+        return
+    if not os.environ.get("HONEYPOT_PG_DSN"):
+        return
+
+    from honeypot_analytics import publish
+
+    con = duckdb.connect()
+    con.execute(
+        "SET extension_directory = '"
+        + str(extension_cache).replace("\\", "/")
+        + "'"
+    )
+    publish.create_schema(con)
+    for table in ("sessions", "login_attempts", "commands"):
+        con.execute(f"DELETE FROM pg.{table}")
+    con.close()
 
 
 @pytest.fixture
