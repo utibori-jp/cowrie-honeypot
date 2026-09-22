@@ -23,6 +23,10 @@ DISCORD_LIMIT = 2000
 COMMAND_WIDTH = 70
 
 
+def _megabytes(size: int) -> str:
+    return f"{size / 1024 / 1024:.1f} MB"
+
+
 def _shorten(text: str, width: int = COMMAND_WIDTH) -> str:
     """One line, no longer than width. Attacker commands are neither."""
     flat = " ".join(text.split())
@@ -39,6 +43,10 @@ def format_report(day: dt.date, summary: dict) -> str:
         f"source addresses  {summary['source_ips']} in {summary['networks']} /24s",
         f"logins succeeded  {summary['logins_succeeded']}",
         f"commands run      {summary['commands']}",
+        "",
+        f"stored so far     {summary['stored_days']} days,"
+        f" {summary['stored_sessions']} sessions,"
+        f" {_megabytes(summary['stored_bytes'])}",
     ]
 
     if summary["top_networks"]:
@@ -127,7 +135,26 @@ def daily_summary(con: duckdb.DuckDBPyConnection, day: dt.date) -> dict:
         f" GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT {TOP_N}",
     )
 
+    # Everything held, not just this day, so the report shows the archive
+    # growing. The size covers indexes and toast as well, which is what the
+    # volume actually has to hold.
+    stored = _pg(
+        con,
+        "SELECT count(DISTINCT day) AS days, count(*) AS sessions"
+        " FROM sessions",
+    )[0]
+    stored_bytes = _pg(
+        con,
+        "SELECT sum(pg_total_relation_size(c.oid))::bigint AS bytes"
+        " FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
+        " WHERE n.nspname = 'public'"
+        " AND c.relname IN ('sessions', 'login_attempts', 'commands')",
+    )[0][0]
+
     return {
+        "stored_days": stored[0],
+        "stored_sessions": stored[1],
+        "stored_bytes": stored_bytes or 0,
         "sessions": totals[0],
         "source_ips": totals[1],
         "networks": totals[2],

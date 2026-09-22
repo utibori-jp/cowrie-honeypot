@@ -28,6 +28,9 @@ SUMMARY = {
     "top_networks": [("109.160.32.0/24", 1437), ("185.246.128.0/24", 413)],
     "top_credentials": [("root", "123456", 88), ("admin", "admin", 41)],
     "top_commands": [("uname -s -v -n -r -m", 1204), ("whoami", 33)],
+    "stored_days": 9,
+    "stored_sessions": 22719,
+    "stored_bytes": 12_582_912,
 }
 
 
@@ -61,6 +64,9 @@ def test_a_quiet_day_still_produces_a_report():
         "top_networks": [],
         "top_credentials": [],
         "top_commands": [],
+        "stored_days": 0,
+        "stored_sessions": 0,
+        "stored_bytes": 0,
     }
 
     text = report.format_report(DAY, summary)
@@ -113,6 +119,10 @@ def test_daily_summary_counts_what_the_report_shows(env, write_bronze):
     assert summary["top_networks"][0] == ("1.2.3.0/24", 2)
     assert summary["top_credentials"][0] == ("root", "123456", 2)
     assert summary["top_commands"][0] == ("uname -a", 1)
+    # What has piled up, not just this day.
+    assert summary["stored_days"] == 1
+    assert summary["stored_sessions"] == 3
+    assert summary["stored_bytes"] > 0
 
 
 def test_post_sends_the_text_as_a_discord_content_field():
@@ -144,6 +154,10 @@ def test_post_sends_the_text_as_a_discord_content_field():
 def test_post_raises_when_discord_rejects_it():
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_POST(self):
+            # Drain the body before answering. Closing the socket on a client
+            # that is still sending aborts the connection on Windows, and the
+            # test would see that instead of the status it is about.
+            self.rfile.read(int(self.headers["Content-Length"]))
             self.send_response(400)
             self.end_headers()
 
@@ -174,3 +188,11 @@ def test_a_missing_username_or_password_reads_as_absent():
 
     assert "None" not in text
     assert "admin / -" in text
+
+
+def test_report_says_how_much_has_piled_up():
+    text = report.format_report(DAY, SUMMARY)
+
+    assert "9 days" in text
+    assert "22719" in text
+    assert "12.0 MB" in text
