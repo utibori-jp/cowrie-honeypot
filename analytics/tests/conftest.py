@@ -9,11 +9,40 @@ copy.
 
 from __future__ import annotations
 
+import gzip
+import json
 import shutil
 
 import pytest
 
 import duckdb
+
+
+def _write_bronze(prefix, day, records):
+    part = (
+        prefix
+        / f"year={day.year:04d}"
+        / f"month={day.month:02d}"
+        / f"day={day.day:02d}"
+    )
+    part.mkdir(parents=True, exist_ok=True)
+    path = part / f"cowrie.json.{day.isoformat()}.gz"
+    with gzip.open(path, "wt") as fh:
+        for record in records:
+            fh.write(json.dumps(record) + "\n")
+    return path
+
+
+@pytest.fixture
+def write_bronze():
+    """Lay down one day of gzipped JSON where the bronze glob will find it.
+
+    A fixture rather than an import, so the two test modules do not have to
+    reach into each other. pytest puts conftest fixtures in scope everywhere
+    below this directory; a cross module import only works by accident of
+    sys.path and breaks under a different working directory.
+    """
+    return _write_bronze
 
 
 @pytest.fixture(scope="session")

@@ -7,9 +7,6 @@ HONEYPOT_B2_PREFIX at a temp dir covers the SQL without touching B2.
 from __future__ import annotations
 
 import datetime as dt
-import gzip
-import json
-
 import pytest
 
 from honeypot_analytics import db, normalize
@@ -17,22 +14,7 @@ from honeypot_analytics import db, normalize
 DAY = dt.date(2026, 9, 15)
 
 
-def write_bronze(prefix, day, records):
-    part = (
-        prefix
-        / f"year={day.year:04d}"
-        / f"month={day.month:02d}"
-        / f"day={day.day:02d}"
-    )
-    part.mkdir(parents=True)
-    path = part / f"cowrie.json.{day.isoformat()}.gz"
-    with gzip.open(path, "wt") as fh:
-        for record in records:
-            fh.write(json.dumps(record) + "\n")
-    return path
-
-
-def test_writes_one_partition(env):
+def test_writes_one_partition(env, write_bronze):
     write_bronze(
         env / "bronze",
         DAY,
@@ -46,7 +28,7 @@ def test_writes_one_partition(env):
     assert (db.silver_events_dir(DAY) / "events.parquet").exists()
 
 
-def test_keeps_columns_that_only_some_events_have(env):
+def test_keeps_columns_that_only_some_events_have(env, write_bronze):
     write_bronze(
         env / "bronze",
         DAY,
@@ -69,7 +51,7 @@ def test_keeps_columns_that_only_some_events_have(env):
     assert {"eventid", "src_ip", "filename", "source_file"} <= cols
 
 
-def test_rerunning_replaces_rather_than_appends(env):
+def test_rerunning_replaces_rather_than_appends(env, write_bronze):
     write_bronze(
         env / "bronze", DAY, [{"eventid": "cowrie.session.connect"}]
     )
@@ -78,14 +60,14 @@ def test_rerunning_replaces_rather_than_appends(env):
     assert normalize.normalize_day(con, DAY) == 1
 
 
-def test_missing_day_is_an_error_unless_allowed(env):
+def test_missing_day_is_an_error_unless_allowed(env, write_bronze):
     con = db.connect()
     with pytest.raises(normalize.NoDataForDay):
         normalize.normalize_day(con, DAY)
     assert normalize.normalize_day(con, DAY, allow_missing=True) == 0
 
 
-def test_partition_columns_are_all_strings(env):
+def test_partition_columns_are_all_strings(env, write_bronze):
     # A single digit day next to a two digit one is what makes DuckDB's own
     # guess inconsistent, so the fixture covers both.
     for day in (dt.date(2026, 9, 5), dt.date(2026, 9, 15)):
@@ -109,7 +91,7 @@ def test_partition_columns_are_all_strings(env):
     ).fetchall() == [("05",), ("15",)]
 
 
-def test_keeps_fields_that_only_appear_past_the_inference_sample(env):
+def test_keeps_fields_that_only_appear_past_the_inference_sample(env, write_bronze):
     # DuckDB samples the first rows to infer a schema unless told otherwise.
     # Cowrie's rare events sit at the end of a busy day, so a field carried by
     # a handful of records has to survive being nowhere near the front.
@@ -137,7 +119,7 @@ def test_empty_date_argument_means_yesterday():
     assert start == end == cli._yesterday()
 
 
-def test_jobs_get_an_in_memory_connection_by_default(env):
+def test_jobs_get_an_in_memory_connection_by_default(env, write_bronze):
     # A job holding the workbench file open would lock out the notebooks, and
     # a notebook holding it open would lock out the nightly job.
     con = db.connect()
@@ -145,7 +127,7 @@ def test_jobs_get_an_in_memory_connection_by_default(env):
     assert not db.workbench_db().exists()
 
 
-def test_init_views_creates_a_queryable_view(env):
+def test_init_views_creates_a_queryable_view(env, write_bronze):
     write_bronze(env / "bronze", DAY, [{"eventid": "cowrie.session.connect"}])
     con = db.connect()
     normalize.normalize_day(con, DAY)

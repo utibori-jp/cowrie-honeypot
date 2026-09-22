@@ -13,7 +13,6 @@ import os
 import pytest
 
 from honeypot_analytics import db, normalize, publish
-from tests.test_normalize import write_bronze
 
 DAY = dt.date(2026, 9, 15)
 
@@ -35,14 +34,14 @@ def event(eventid, session="s1", ts="2026-09-15 01:02:03.000000", **extra):
     }
 
 
-def silver(env, records, day=DAY):
+def silver(env, write_bronze, records, day=DAY):
     write_bronze(env / "bronze", day, records)
     con = db.connect()
     normalize.normalize_day(con, day)
     return con
 
 
-def test_selects_cover_only_the_requested_day(env):
+def test_selects_cover_only_the_requested_day(env, write_bronze):
     # The day scoped delete and insert is only safe if the select stops at the
     # partition boundary.
     other = dt.date(2026, 9, 16)
@@ -70,9 +69,10 @@ def test_selects_cover_only_the_requested_day(env):
     ] == ["s2"]
 
 
-def test_commands_keep_one_row_per_input(env):
+def test_commands_keep_one_row_per_input(env, write_bronze):
     con = silver(
         env,
+        write_bronze,
         [
             event("cowrie.session.connect"),
             event(
@@ -96,9 +96,10 @@ def test_commands_keep_one_row_per_input(env):
     ]
 
 
-def test_login_attempts_keep_failures_alongside_successes(env):
+def test_login_attempts_keep_failures_alongside_successes(env, write_bronze):
     con = silver(
         env,
+        write_bronze,
         [
             event("cowrie.session.connect"),
             event(
@@ -124,12 +125,13 @@ def test_login_attempts_keep_failures_alongside_successes(env):
     ]
 
 
-def test_session_without_a_connect_in_this_partition_is_skipped(env):
+def test_session_without_a_connect_in_this_partition_is_skipped(env, write_bronze):
     # A session open when the log rotates leaves its close in the next day's
     # partition. That tail has no connect, so it has no connect_time, and the
     # row it would produce cannot be stored.
     con = silver(
         env,
+        write_bronze,
         [
             event("cowrie.command.input", input="whoami"),
             event("cowrie.session.closed", duration_ms=4500),
@@ -139,9 +141,10 @@ def test_session_without_a_connect_in_this_partition_is_skipped(env):
     assert con.execute(publish.sessions_select(DAY)).fetchall() == []
 
 
-def test_session_row_carries_the_derived_fields(env):
+def test_session_row_carries_the_derived_fields(env, write_bronze):
     con = silver(
         env,
+        write_bronze,
         [
             event("cowrie.session.connect", ts="2026-09-15 01:02:03.000000"),
             event("cowrie.client.version", version="SSH-2.0-OpenSSH_9.9"),
@@ -171,9 +174,10 @@ def test_session_row_carries_the_derived_fields(env):
 
 
 @needs_pg
-def test_publish_day_loads_the_three_tables(env):
+def test_publish_day_loads_the_three_tables(env, write_bronze):
     con = silver(
         env,
+        write_bronze,
         [
             event("cowrie.session.connect"),
             event("cowrie.login.success", username="root", password="123qwe"),
@@ -194,9 +198,10 @@ def test_publish_day_loads_the_three_tables(env):
 
 
 @needs_pg
-def test_publishing_a_day_twice_replaces_rather_than_duplicates(env):
+def test_publishing_a_day_twice_replaces_rather_than_duplicates(env, write_bronze):
     con = silver(
         env,
+        write_bronze,
         [
             event("cowrie.session.connect"),
             event("cowrie.command.input", input="uname -a"),
@@ -227,7 +232,7 @@ def test_publish_takes_the_same_date_arguments_as_normalize():
 
 
 @needs_pg
-def test_libpq_environment_variables_work_without_a_dsn(env, monkeypatch):
+def test_libpq_environment_variables_work_without_a_dsn(env, write_bronze, monkeypatch):
     # What the cluster uses: host, user and database sit in the chart as plain
     # values and only the password comes from a secret.
     dsn = os.environ["HONEYPOT_PG_DSN"]
@@ -243,12 +248,12 @@ def test_libpq_environment_variables_work_without_a_dsn(env, monkeypatch):
     monkeypatch.setenv("PGPASSWORD", password)
     monkeypatch.setenv("PGDATABASE", database)
 
-    con = silver(env, [event("cowrie.session.connect")])
+    con = silver(env, write_bronze, [event("cowrie.session.connect")])
     publish.create_schema(con)
     assert publish.publish_day(con, DAY)["sessions"] == 1
 
 
-def test_publishing_a_day_with_no_silver_is_an_error(env):
+def test_publishing_a_day_with_no_silver_is_an_error(env, write_bronze):
     # Without this, the delete lands and the insert brings nothing, so a typo
     # in a manual --date silently empties that day in postgres.
     con = db.connect()
@@ -257,8 +262,8 @@ def test_publishing_a_day_with_no_silver_is_an_error(env):
 
 
 @needs_pg
-def test_allow_missing_leaves_what_is_already_there(env):
-    con = silver(env, [event("cowrie.session.connect")])
+def test_allow_missing_leaves_what_is_already_there(env, write_bronze):
+    con = silver(env, write_bronze, [event("cowrie.session.connect")])
     publish.create_schema(con)
     publish.publish_day(con, DAY)
 
