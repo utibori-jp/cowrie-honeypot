@@ -135,6 +135,7 @@ def test_post_sends_the_text_as_a_discord_content_field():
             length = int(self.headers["Content-Length"])
             received["body"] = json.loads(self.rfile.read(length))
             received["type"] = self.headers["Content-Type"]
+            received["agent"] = self.headers["User-Agent"]
             self.send_response(204)
             self.end_headers()
 
@@ -149,6 +150,9 @@ def test_post_sends_the_text_as_a_discord_content_field():
 
     assert received["body"] == {"content": "hello from the honeypot"}
     assert received["type"] == "application/json"
+    # Cloudflare sits in front of Discord and answers urllib's default agent
+    # with a 403, so the request has to say who it is.
+    assert received["agent"] and "urllib" not in received["agent"]
 
 
 def test_post_raises_when_discord_rejects_it():

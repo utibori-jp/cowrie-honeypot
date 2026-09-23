@@ -22,6 +22,10 @@ TOP_N = 5
 DISCORD_LIMIT = 2000
 COMMAND_WIDTH = 70
 
+USER_AGENT = (
+    "honeypot-analytics (https://github.com/utibori-jp/cowrie-honeypot)"
+)
+
 
 def _megabytes(size: int) -> str:
     return f"{size / 1024 / 1024:.1f} MB"
@@ -189,7 +193,13 @@ def post_report(webhook_url: str, text: str) -> None:
     request = urllib.request.Request(
         webhook_url,
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            # Cloudflare fronts Discord and turns away urllib's default agent
+            # with a 403 that says nothing about why. Anything that names the
+            # caller gets through.
+            "User-Agent": USER_AGENT,
+        },
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=30):
