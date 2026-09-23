@@ -10,7 +10,7 @@ import urllib.request
 
 import duckdb
 
-from .db import sql_literal
+from .db import bronze_prefix, sql_literal
 from .publish import attach
 
 log = logging.getLogger(__name__)
@@ -45,9 +45,21 @@ def format_report(day: dt.date, summary: dict) -> str:
         f"commands run      {summary['commands']}",
         "",
         f"stored so far     {summary['stored_days']} days,"
-        f" {summary['stored_sessions']} sessions,"
-        f" {_megabytes(summary['stored_bytes'])}",
+        f" {summary['stored_sessions']} sessions",
     ]
+
+    # Only when the job was given B2 credentials. It reads Postgres to do its
+    # work, and reaching the bucket as well is a separate decision.
+    if "bronze_bytes" in summary:
+        lines.append(
+            f"storage           {_megabytes(summary['bronze_bytes'])} in B2"
+            f" (gzip), {_megabytes(summary['stored_bytes'])} in postgres"
+        )
+    else:
+        lines.append(
+            f"storage           {_megabytes(summary['stored_bytes'])}"
+            " in postgres"
+        )
 
     if summary["top_networks"]:
         lines.append("")
@@ -203,3 +215,15 @@ def webhook_url() -> str:
             "honeypot-discord sealed secret."
         )
     return url
+
+
+def bronze_bytes(con: duckdb.DuckDBPyConnection) -> int:
+    """Total size of the shipped logs in B2.
+
+    read_blob answers from the listing rather than the objects, so this costs
+    a LIST and not a download of the bucket.
+    """
+    uri = f"{bronze_prefix()}/**/*.gz"
+    return con.execute(
+        "SELECT coalesce(sum(size), 0) FROM read_blob(" + sql_literal(uri) + ")"
+    ).fetchone()[0]

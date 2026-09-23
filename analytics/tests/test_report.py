@@ -196,3 +196,11 @@ def test_report_says_how_much_has_piled_up():
     assert "9 days" in text
     assert "22719" in text
     assert "12.0 MB" in text
+
+
+def test_bronze_size_appears_only_when_it_was_measured():
+    without = report.format_report(DAY, SUMMARY)
+    assert "in B2" not in without
+
+    with_b2 = report.format_report(DAY, dict(SUMMARY, bronze_bytes=7_340_032))
+    assert "7.0 MB in B2" in with_b2

@@ -43,9 +43,20 @@ for a personal-notes tone, not a product page.
 
 ## Notebooks
 
-They live in `analytics/notebooks/`. Clear all output before committing. This
-repository is public and the outputs carry attacker IP addresses. Inside a
-running notebook `src_ip` is fine to handle in the clear.
+They live in `analytics/notebooks/`. Commit them with their output. Source that
+nobody can run is not worth reading, and without the bronze logs nobody can:
+the output is the only part a reader gets.
+
+That means being deliberate about what the output shows. Attacker side data is
+fine to publish. Source addresses, the credentials they tried and the commands
+they ran are exactly what a reader came for, and every honeypot feed publishes
+them already.
+
+Our own side is not. `dst_ip` is the droplet's public address and it rides along
+in every raw event, so a cell that displays raw rows puts it in a public
+repository under a real name. Drop it, or select columns rather than reaching
+for `SELECT *`, in any cell whose output gets committed. The same goes for
+anything else that identifies the host rather than the attacker.
 
 ## Releasing the analytics image
 

@@ -79,7 +79,9 @@ Postgres, since the delete would land and the insert would bring nothing.
 `--allow-missing` turns that into a skip, leaving whatever is already stored.
 
 `report` reads Postgres rather than silver, so the numbers it posts and the
-numbers on the dashboard cannot disagree.
+numbers on the dashboard cannot disagree. Given the B2 credentials as well it
+adds the size of the shipped logs, which costs a LIST and not a download.
+Without them it reports the Postgres side alone.
 
 Losing the Postgres volume costs `init-db` and then `publish` over the days on
 the data volume. Neither happens on its own, so a rebuilt database stays empty

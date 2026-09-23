@@ -9,3 +9,8 @@ vps/cowrie/cowrie.cfg
 
 # Personal working memo, loaded by Claude Code, not for the repo.
 CLAUDE.local.md
+
+# A uv lockfile for local venvs. The image installs from pyproject.toml, which
+# already pins every direct dependency, so committing this would only promise a
+# reproducibility the image does not use.
+analytics/uv.lock
